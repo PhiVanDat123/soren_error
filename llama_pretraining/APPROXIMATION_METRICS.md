@@ -1,5 +1,30 @@
 # Approximation diagnostics during Llama pretraining
 
+## Compact results for rebuttal
+
+Training automatically writes `<optimizer>_approximation_summary.txt` in the
+approximation log directory after each sampled update, collecting all ranks.
+Each reference has one table row per step, combining every measured matrix.
+`Global rel. F` is `sqrt(sum_p ||approx_p-exact_p||_F^2 / sum_p ||exact_p||_F^2)`.
+`Mean rel. F` is the unweighted mean of matrix-wise relative Frobenius errors;
+these are different aggregations. `Max mode` is the maximum relative coefficient
+error over all matrices and modes. Log RMSE pools squared per-matrix centered
+log errors weighted by the number of modes. Widths are matrix-wise means.
+All relative errors in the summary table are already percentages.
+
+To summarize existing logs without rerunning training:
+
+```bash
+python summarize_approximation.py 'outputs/llama_60m_soren/approximation_logs/soren_approximation_rank*.txt' --output soren_rebuttal_summary.txt
+```
+
+Include every rank file from the same run. Old logs do not contain the squared
+norms needed to recover global relative Frobenius error, so that column reads
+`N/A`; mean matrix-wise errors can still be computed exactly. New logs include
+those norms. The script rejects conflicting duplicate records from different
+runs rather than mixing them silently. Detailed per-matrix files are retained
+for inspection, but the summary table is the compact reporting artifact.
+
 From `llama_pretraining`, run the existing Linux/CUDA launchers:
 
 ```bash

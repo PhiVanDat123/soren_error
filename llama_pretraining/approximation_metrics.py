@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 
 import torch
+import torch.distributed as dist
+from summarize_approximation import HEADER, summarize
 
 
 @torch.no_grad()
@@ -39,6 +41,8 @@ def approximation_metrics(matrix, approximate, kind):
         width_approx = log_y.max() - log_y.min()
         rows.append(dict(
             reference=reference,
+            exact_frobenius_squared=exact.square().sum().item(),
+            error_frobenius_squared=(y - exact).square().sum().item(),
             relative_frobenius_error=((y - exact).norm() / exact.norm()).item(),
             max_per_mode_relative_error=(delta.abs() / target).max().item(),
             mean_per_mode_relative_error=(delta.abs() / target).mean().item(),
@@ -75,6 +79,7 @@ class ApproximationLogger:
         self.rank, self.every, self.steps = rank, every, set(steps)
         self.pattern = re.compile(parameter_regex) if parameter_regex else None
         self.step = 0
+        self.pending = []
         Path(directory).mkdir(parents=True, exist_ok=True)
         self.path = Path(directory) / f"{optimizer_name}_approximation_rank{rank}.txt"
 
@@ -95,7 +100,27 @@ class ApproximationLogger:
                                input_dtype=str(matrix.dtype), output_dtype=str(output.dtype),
                                input_kind="nesterov_momentum", ns_steps=5)
                     stream.write(json.dumps(row, allow_nan=False) + "\n")
+                    self.pending.append(row)
         return record
+
+    def flush_summary(self):
+        """Called by every rank after a sampled optimizer update."""
+        if self.step not in self.steps and not (self.every and self.step > 0 and self.step % self.every == 0):
+            return
+        if dist.is_available() and dist.is_initialized():
+            gathered = [None] * dist.get_world_size() if self.rank == 0 else None
+            dist.gather_object(self.pending, gathered, dst=0)
+            rows = [row for rank_rows in gathered for row in rank_rows] if self.rank == 0 else []
+        else:
+            rows = self.pending
+        if self.rank == 0 and rows:
+            path = self.path.parent / f"{self.optimizer_name}_approximation_summary.txt"
+            needs_header = not path.exists() or path.stat().st_size == 0
+            with path.open('a', encoding='utf-8') as stream:
+                if needs_header:
+                    stream.write(HEADER)
+                stream.write(summarize(rows))
+        self.pending = []
 
 
 def approximation_callback(optimizer, parameter):

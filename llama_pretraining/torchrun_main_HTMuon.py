@@ -776,6 +776,9 @@ def main(args):
             optimizer.zero_grad()
         # ======================================================
 
+        if approximation_logger is not None:
+            approximation_logger.flush_summary()
+
         update_step += 1
         update_time = time.time() - update_time
 

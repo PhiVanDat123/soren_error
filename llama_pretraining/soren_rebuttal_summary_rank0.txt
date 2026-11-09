@@ -1,0 +1,11 @@
+Sources: 1 rank log file(s). Include all ranks for full coverage.
+
+| Optimizer | Step | Reference | Matrices | Mean rel. F (%) | Global rel. F (%) | Max mode (%) | Log RMSE | Mean width exact / approx |
+|---|---:|---|---:|---:|---:|---:|---:|---|
+| soren | 1 | svd_sigmoid_fro_normalized | 58 | 89.403 | N/A | 100.006 | 2.0384 | 0.4238 / 12.0388 |
+| soren | 1 | svd_sigmoid_raw | 58 | 89.607 | N/A | 100.006 | 2.0502 | 0.0090 / 12.0388 |
+
+Mean rel. F: unweighted mean of per-matrix relative Frobenius errors.
+Global rel. F: sqrt(sum squared matrix errors / sum squared exact norms); N/A for old logs.
+Max mode: maximum across all matrices/modes. Log RMSE: mode-weighted, per-matrix median-centered log2 spectra.
+Widths: unweighted means of per-matrix log2 ranges. References are reported separately.
