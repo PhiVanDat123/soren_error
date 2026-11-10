@@ -36,6 +36,7 @@ from soren_lamda import MuonWithAuxAdam_lamdba
 from soren import MuonWithAuxAdam_sigmoid
 from soren import newton_schulz_sigmoid_rect
 from approximation_metrics import ApproximationLogger
+from paper_optimizers import PaperOptimizerWithAuxAdam
 
 from AdEMAMix import AdEMAMix
 from c_adamw import AdamW as C_AdamW
@@ -213,6 +214,15 @@ def parse_args(args):
     parser.add_argument("--save_every", type=int, default=10000)
     parser.add_argument("--continue_from", type=str, default=None) 
     parser.add_argument("--optimizer", type=str, default="adam") 
+    parser.add_argument("--spectral_steps", type=int, default=None,
+                        help="New paper optimizers: default 20 for targeted Muon, 5 for Kaon")
+    parser.add_argument("--targeted_threshold", type=float, default=0.01,
+                        help="Absolute threshold on unnormalized Nesterov momentum singular values")
+    parser.add_argument("--freon_exponent", type=float, default=2/3)
+    parser.add_argument("--freon_relative_floor", type=float, default=1e-6)
+    parser.add_argument("--truncate_fraction", type=float, default=0.05)
+    parser.add_argument("--paper_momentum", type=float, default=None,
+                        help="Default 0.9 for TruncatedSGD, 0.95 for the other new optimizers")
 
     
 
@@ -504,7 +514,9 @@ def main(args):
     # soren / soren_lamda are Muon variants but their names contain no "muon",
     # so they need naming here or they fall through to the flat parameter list
     # and blow up on `assert "use_muon" in group`.
-    if 'muon' in args.optimizer.lower() or 'soren' in args.optimizer.lower():
+    paper_optimizers = {"targeted_muon_top", "targeted_muon_bottom", "freon", "kaon", "truncated_sgd"}
+    is_paper_optimizer = args.optimizer.lower() in paper_optimizers
+    if 'muon' in args.optimizer.lower() or 'soren' in args.optimizer.lower() or is_paper_optimizer:
         body_modules = nn.ModuleDict({
             "layers": model.model.layers,
             "norm": model.model.norm,
@@ -550,8 +562,8 @@ def main(args):
                     out.append(p)
             return out
 
-        muon_params = unique_params(hidden_weights + nonhidden_params)
-        adam_params = unique_params(hidden_gains_biases)
+        muon_params = unique_params(hidden_weights if is_paper_optimizer else hidden_weights + nonhidden_params)
+        adam_params = unique_params(hidden_gains_biases + nonhidden_params if is_paper_optimizer else hidden_gains_biases)
 
         trainable_params = [
             dict(
@@ -586,6 +598,17 @@ def main(args):
         optimizer = MuonWithAuxAdam_sigmoid(trainable_params)
     elif args.optimizer.lower() == "soren_lamda":
         optimizer = MuonWithAuxAdam_lamdba(trainable_params)
+    elif is_paper_optimizer:
+        method = "targeted_muon" if args.optimizer.lower().startswith("targeted_muon_") else args.optimizer.lower()
+        optimizer = PaperOptimizerWithAuxAdam(
+            trainable_params, method,
+            momentum=args.paper_momentum if args.paper_momentum is not None else (0.9 if method == "truncated_sgd" else 0.95),
+            steps=args.spectral_steps if args.spectral_steps is not None else (20 if method == "targeted_muon" else 5),
+            threshold=args.targeted_threshold,
+            target="top" if args.optimizer.lower().endswith("_top") else "bottom",
+            exponent=args.freon_exponent, relative_floor=args.freon_relative_floor,
+            truncate_fraction=args.truncate_fraction,
+        )
     elif args.optimizer.lower() == "soap":
         optimizer = SOAP(trainable_params, lr = args.lr, betas=(.95, .95), weight_decay=args.weight_decay, precondition_frequency=10)
     elif args.optimizer.lower() == "mars":

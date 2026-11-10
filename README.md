@@ -20,6 +20,10 @@ We utilized the publicly available C4 dataset, OpenWebText dataset, CIFAR-10, CI
 
 ## Usage
 
+Additional pretraining optimizers (Spectrally Targeted Muon, Kaon, Freon SVD,
+and TruncatedSGD), with Llama-60M launchers:
+[configuration and implementation notes](llama_pretraining/PAPER_OPTIMIZERS.md).
+
 
 #### Pretraining LLama-60M on C4 (By streaming power iteration)
 ```bash
